@@ -155,12 +155,25 @@ const textos = (seletor) => js(`Array.from(document.querySelectorAll(${q(seletor
 const texto = (seletor) => js(`(() => { const e = document.querySelector(${q(seletor)}); return e ? e.textContent.trim() : null; })()`);
 const visivel = (seletor) => `(() => { const e = document.querySelector(${q(seletor)}); return !!e && !e.closest('[hidden]'); })()`;
 const trilhaAtual = () => texto('#trilha .trilha-item.atual');
-const focado = () => js('document.activeElement ? (document.activeElement.dataset.caminho || document.activeElement.id || document.activeElement.tagName) : null');
+// Numa linha, o foco fica no botão do nome; o caminho está na linha dele.
+const CAMINHO_FOCADO = `(document.activeElement && document.activeElement.closest('.linha') ? document.activeElement.closest('.linha').dataset.caminho : '')`;
+const focado = () => js(`${CAMINHO_FOCADO} || (document.activeElement ? document.activeElement.id || document.activeElement.tagName : null)`);
+const focoNaLinha = (fim) => `${CAMINHO_FOCADO}.endsWith(${q(fim)})`;
+
+// Quantas linhas da vista Pastas cabem sem rolar, do começo da lista até o
+// pé da tela (linha de 52 px, 2 px entre elas, 4 px de borda da lista).
+const linhasQueCabem = () => js(`(() => {
+  const tela = document.getElementById('tela-resultado').getBoundingClientRect();
+  const lista = document.getElementById('lista-pastas').getBoundingClientRect();
+  return Math.floor((tela.bottom - lista.top - 4 + 2) / 54);
+})()`);
 
 // Tecla de verdade, pelo mesmo caminho de entrada do teclado físico.
 async function tecla(codigo, modificadores = []) {
   const wc = janela.webContents;
   wc.sendInputEvent({ type: 'keyDown', keyCode: codigo, modifiers: modificadores });
+  // o botão só "clica" no Enter com o caractere, como o teclado físico manda
+  if (codigo === 'Enter') wc.sendInputEvent({ type: 'char', keyCode: '\r', modifiers: modificadores });
   wc.sendInputEvent({ type: 'keyUp', keyCode: codigo, modifiers: modificadores });
   await pausa(60);
 }
@@ -218,6 +231,26 @@ async function conferirSemRolagemLateral(onde) {
   assert.ok(r.pagina <= 0 && r.tela <= 0, 'rolagem lateral em ' + onde + ': ' + JSON.stringify(r));
 }
 
+// A barra "O disco diz" tem três pedaços; a legenda que diz o que é cada um
+// tem que aparecer em qualquer tamanho de janela, não só no title.
+async function conferirLegendaDoDisco(onde) {
+  const r = await js(`(() => {
+    const l = document.querySelector('#resumo .comparacao .legenda');
+    if (!l) return null;
+    return { altura: l.getBoundingClientRect().height, itens: Array.from(l.querySelectorAll('li')).map((li) => li.textContent) };
+  })()`);
+  assert.ok(r && r.altura > 0, 'legenda da comparação some em ' + onde);
+  assert.equal(r.itens.length, 3, 'legenda com somado, fora da soma e livre em ' + onde + ': ' + JSON.stringify(r.itens));
+}
+
+// Os botões das linhas cabem na coluna deles, sem passar da borda da linha.
+async function conferirAcoesCabem(onde) {
+  const fora = await js(`Array.from(document.querySelectorAll('.vista:not([hidden]) .linha .acoes button'))
+    .filter((b) => b.getBoundingClientRect().right > b.closest('.linha').getBoundingClientRect().right + 0.5)
+    .map((b) => b.textContent)`);
+  assert.deepEqual(fora, [], 'botões passando da linha em ' + onde);
+}
+
 function registrar(tratadores) {
   for (const [canal, fn] of Object.entries(tratadores)) ipcMain.handle(canal, fn);
 }
@@ -253,6 +286,9 @@ async function fumaca() {
   const varreduras = [];
   let pedidosDePasta = 0;
   let respostaAbrir = '';
+  // a primeira carga da aba falha, a segunda não (o Electron imprime o erro do
+  // tratador no terminal: é esperado)
+  let falharPesadas = true;
   // Parar: a varredura segura até a interface apertar Parar e aí começa já
   // parada. Assim o parcial é sempre o mesmo, sem depender de relógio.
   let segurar = false;
@@ -280,8 +316,11 @@ async function fumaca() {
     },
     parar: () => {
       if (soltar) {
-        soltar();
+        // como o motor de verdade, que ainda termina a pasta que está lendo:
+        // o pedido volta na hora, a varredura só um pouco depois
+        const s = soltar;
         soltar = null;
+        setTimeout(s, 800);
       } else {
         motor.parar();
       }
@@ -289,7 +328,13 @@ async function fumaca() {
     filhos: (_e, c) => motor.filhos(c),
     'arquivos-de': (_e, c, limite) => motor.arquivosDe(c, limite),
     'maiores-arquivos': () => motor.maioresArquivos(),
-    'pastas-mais-pesadas': () => motor.pastasMaisPesadas(),
+    'pastas-mais-pesadas': () => {
+      if (falharPesadas) {
+        falharPesadas = false;
+        throw new Error('falha simulada');
+      }
+      return motor.pastasMaisPesadas();
+    },
     'sem-permissao': () => motor.semPermissao(),
     abrir: (_e, caminho, ehArquivo) => {
       aberturas.push({ caminho, ehArquivo });
@@ -304,11 +349,19 @@ async function fumaca() {
 
     // --- início ---
     await esperar('document.querySelector(".cartao-disco")', 'cartão do disco');
-    assert.equal(await texto('#alvo'), 'Vai varrer: ' + fixture.raiz);
+    // Um caminho só: o Varrer de cada cartão. O alvo aparece em texto antes
+    // da varredura, no cartão e no nome acessível do botão.
+    assert.equal(await texto('.cartao-disco .disco-nome'), fixture.raiz);
+    assert.equal(await js('document.querySelector(".cartao-disco .btn-varrer-disco").getAttribute("aria-label")'), 'Varrer ' + fixture.raiz);
+    assert.equal(await js('!!document.getElementById("alvo") || !!document.getElementById("btn-varrer")'), false, 'sem a barra "Vai varrer"');
     assert.equal(await js('document.querySelectorAll(".cartao-disco").length'), 1);
     assert.equal(await texto('.cartao-disco .selo'), '92% cheio');
-    assert.equal(await js('document.querySelector(".cartao-disco").getAttribute("aria-current")'), 'true');
     assert.ok(await js('!!document.querySelector(".cartao-disco svg .anel-fatia.cor-critico")'), 'medidor do disco na cor de crítico');
+    assert.ok(await js(`(() => {
+      const a = document.querySelector('.cartao-disco').getBoundingClientRect();
+      const b = document.getElementById('cartao-pasta').getBoundingClientRect();
+      return Math.abs(a.top - b.top) < 2 && b.left > a.right;
+    })()`), 'com um disco só, o cartão da pasta fica ao lado dele');
     assert.equal(await js('document.querySelector(".barra-titulo img.logo").naturalWidth > 0'), true, 'logo carregou');
     await conferirSemRolagemLateral('início');
     await capturar(saida, '01-inicio-claro.png');
@@ -316,11 +369,12 @@ async function fumaca() {
     await capturar(saida, '01-inicio-escuro.png');
     await tema('light');
 
-    // "Escolher uma pasta…" cancelado não muda o alvo
+    // "Escolher uma pasta…" cancelado deixa o cartão como estava
     await clicar('#cartao-pasta');
     await esperarNoPrincipal(() => pedidosDePasta === 1, 'pedido de pasta');
     await pausa(100);
-    assert.equal(await texto('#alvo'), 'Vai varrer: ' + fixture.raiz);
+    assert.equal(await texto('#pasta-titulo'), 'Escolher uma pasta…');
+    assert.equal(await js('document.getElementById("pasta-acoes").hidden'), true);
 
     // --- varrendo, com progresso inventado, e Parar ---
     segurar = true;
@@ -344,31 +398,52 @@ async function fumaca() {
     await tema('light');
     await tamanhoJanela(1100, 720);
 
-    const botaoParar = await js(`(() => {
-      const b = document.getElementById('btn-parar');
-      b.click();
-      return { desabilitado: b.disabled, texto: b.textContent.trim() };
-    })()`);
-    assert.deepEqual(botaoParar, { desabilitado: true, texto: 'Parando…' });
+    // O pedido de parar volta na hora, mas a varredura ainda leva um tempo:
+    // o "Parando…" tem que ficar até ela voltar de fato.
+    await clicar('#btn-parar');
+    await pausa(200);
+    const botaoParar = await js(`({
+      desabilitado: document.getElementById('btn-parar').disabled,
+      texto: document.getElementById('btn-parar').textContent.trim(),
+      varrendo: !document.getElementById('tela-varrendo').hidden,
+    })`);
+    assert.deepEqual(botaoParar, { desabilitado: true, texto: 'Parando…', varrendo: true });
     await esperar(visivel('#aviso-parcial'), 'aviso de varredura parcial');
     assert.equal(await texto('#aviso-parcial'), 'Varredura interrompida no Parar: os números são parciais.');
     await esperar('document.querySelector("#lista-pastas .vazio")', 'pasta vazia no parcial');
     assert.ok((await texto('#lista-pastas .vazio')).includes('parou antes'));
+    assert.equal(await js('document.querySelector("#lista-pastas .vazio use").getAttribute("href")'), '#i-pasta-contorno', 'vazio sem o ícone de "adicionar pasta"');
+    // o Parar sumiu com a tela: o foco vai pras abas, e o leitor de tela ouve o fim
+    await esperar('document.activeElement && document.activeElement.id === "aba-btn-pastas"', 'foco nas abas depois de parar');
+    await esperar('document.getElementById("anuncio").textContent.startsWith("Varredura interrompida")', 'aviso do fim pro leitor de tela');
     await capturar(saida, '03-parcial-claro.png');
     segurar = false;
 
     // --- nova varredura, agora completa ---
     await clicar('#btn-nova');
     await esperar(visivel('#tela-inicio'), 'volta pro início');
-    await clicar('#btn-varrer');
+    // o foco volta pro Varrer do disco de antes, mesmo com os cartões refeitos
+    await esperar('document.activeElement && document.activeElement.matches(".cartao-disco .btn-varrer-disco")', 'foco no Varrer do disco');
+    await clicar('.cartao-disco .btn-varrer-disco');
     await esperar('document.querySelectorAll("#lista-pastas .linha").length === 4', 'linhas da raiz');
     assert.equal(await js('!!document.getElementById("aviso-parcial")'), false, 'sem aviso de parcial');
     const resumo = await texto('#resumo');
     assert.ok(resumo.includes(fmt.formatarBytes(fixture.total)), 'resumo mostra o total: ' + resumo);
     assert.ok(resumo.includes('O disco diz'), 'resumo compara com o disco');
     assert.ok(resumo.includes('Por que a soma é diferente?'), 'resumo explica a diferença');
-    assert.equal(await trilhaAtual(), fixture.raiz);
+    // a raiz aparece na trilha só pelo nome, com o caminho inteiro no title
+    assert.equal(await trilhaAtual(), path.basename(fixture.raiz));
+    assert.equal(await js('document.querySelector("#trilha .trilha-item.atual").title'), fixture.raiz);
     assert.equal(await js('document.getElementById("btn-subir").disabled'), true, 'Subir desabilitado na raiz');
+    // na raiz o cabeçalho não repete o total que o resumo já mostra
+    assert.equal(await js('!!document.querySelector("#cabecalho-pasta .cabecalho-tamanho")'), false, 'sem total repetido na raiz');
+    await esperar('document.activeElement && document.activeElement.id === "aba-btn-pastas"', 'foco nas abas depois da varredura');
+    // a lista é o que a pessoa procura: na janela padrão cabem pelo menos 5 linhas sem rolar
+    const cabemPadrao = await linhasQueCabem();
+    assert.ok(cabemPadrao >= 5, 'na janela 1100x720 cabem só ' + cabemPadrao + ' linhas sem rolar');
+    // a linha focada não pode parar embaixo das abas grudadas
+    assert.ok(await js(`parseFloat(getComputedStyle(document.getElementById('tela-resultado')).scrollPaddingTop) >= document.getElementById('barra-vistas').offsetHeight`),
+      'scroll-padding do resultado cobre as abas grudadas');
 
     const nomes = await textos('#lista-pastas .linha .nome');
     assert.deepEqual(nomes, ['Documentos', 'Jogos', 'Cache', 'Arquivos soltos nesta pasta']);
@@ -385,7 +460,21 @@ async function fumaca() {
     assert.deepEqual(anel.fatias, ['cor-1', 'cor-2', 'cor-3', 'cor-soltos']);
     assert.deepEqual(anel.linhas, ['cor-1', 'cor-2', 'cor-3', 'cor-soltos']);
     assert.deepEqual(anel.puxada, ['cor-soltos']);
+
+    // Arquivo solto aberto usa a mesma base das pastas (a pasta inteira): o
+    // único solto da raiz tem a mesma % da linha "Arquivos soltos", não 100%.
+    await clicar('#lista-pastas .linha.arquivos-soltos');
+    await esperar('document.querySelector(".arquivos-lista .linha")', 'arquivos soltos da raiz');
+    const pctSoltos = await texto('#lista-pastas .linha.arquivos-soltos .pct');
+    assert.equal(await texto('.arquivos-lista .linha .pct'), pctSoltos);
+    assert.notEqual(pctSoltos, '100%');
+    await clicar('#lista-pastas .linha.arquivos-soltos');
+    await esperar('!document.querySelector(".arquivos-lista")', 'recolher arquivos soltos da raiz');
     await conferirSemRolagemLateral('resultado');
+    await conferirLegendaDoDisco('janela padrão');
+    await conferirAcoesCabem('janela padrão');
+    // o que sai do app tem o mesmo rótulo em toda linha
+    assert.deepEqual(await textos('#lista-pastas .linha .acoes button'), ['No Explorer', 'No Explorer', 'No Explorer']);
     await capturar(saida, '04-pastas-raiz-claro.png');
     await tema('dark');
     await capturar(saida, '04-pastas-raiz-escuro.png');
@@ -400,10 +489,11 @@ async function fumaca() {
     await clicar('#lista-pastas .linha.arquivos-soltos');
     await esperar('document.querySelector(".arquivos-lista .linha")', 'lista de arquivos soltos');
     assert.deepEqual(await textos('.arquivos-lista .linha .nome'), ['praia.jpg', 'serra.jpg', 'festa.jpg']);
-    assert.equal(await js('document.querySelector(".linha.arquivos-soltos").getAttribute("aria-expanded")'), 'true');
+    assert.equal(await js('document.querySelector(".linha.arquivos-soltos button.nome").getAttribute("aria-expanded")'), 'true');
     await capturar(saida, '05-pasta-fotos-claro.png');
 
-    // Mostrar chama abrir com ehArquivo = true
+    // "No Explorer" de um arquivo chama abrir com ehArquivo = true
+    assert.equal(await texto('.arquivos-lista .linha:nth-child(1) .acoes button'), 'No Explorer');
     await clicar('.arquivos-lista .linha:nth-child(1) .acoes button');
     await esperarNoPrincipal(() => aberturas.length === 1, 'chamada de abrir');
     assert.equal(aberturas[0].ehArquivo, true);
@@ -420,17 +510,18 @@ async function fumaca() {
     await esperar('document.querySelectorAll("#trilha .trilha-item").length === 1', 'Backspace até a raiz');
     assert.equal(await js('document.getElementById("btn-subir").disabled'), true);
 
-    // --- teclado: Enter na linha focada, setas, Alt+Seta esquerda ---
-    assert.equal(await focar('#lista-pastas .linha:nth-child(1)'), true);
+    // --- teclado: Enter no nome da linha, setas, Alt+Seta esquerda ---
+    assert.equal(await focar('#lista-pastas .linha:nth-child(1) button.nome'), true);
     await tecla('Enter');
     await esperar(`document.querySelector('#trilha .trilha-item.atual')?.textContent === 'Documentos'`, 'Enter entra na pasta');
-    await esperar(`document.activeElement?.dataset?.caminho?.endsWith('Videos')`, 'foco na primeira linha');
+    await esperar(focoNaLinha('Videos'), 'foco na primeira linha');
     await tecla('Down');
     assert.ok(String(await focado()).endsWith('Fotos'), 'seta pra baixo vai pra Fotos');
     await tecla('Left', ['alt']);
     await esperar('document.querySelectorAll("#trilha .trilha-item").length === 1', 'Alt+Seta esquerda sobe');
-    await esperar(`document.activeElement?.dataset?.caminho?.endsWith('Documentos')`, 'foco volta pra pasta de onde subiu');
+    await esperar(focoNaLinha('Documentos'), 'foco volta pra pasta de onde subiu');
     assert.equal(await js('document.activeElement.matches(":focus-visible")'), true, 'foco de teclado visível');
+    assert.equal(await js('getComputedStyle(document.activeElement.closest(".linha")).outlineStyle'), 'solid', 'contorno de foco na linha inteira');
     await capturar(saida, '05-foco-teclado-claro.png');
 
     // Abrir no Explorer do cabeçalho abre a pasta (ehArquivo = false)
@@ -446,21 +537,37 @@ async function fumaca() {
     assert.equal(maiores[0], 'aniversario.mp4');
     assert.equal(maiores[1], 'jogo-a.pak');
     assert.deepEqual((await textos('#lista-arquivos .linha .rank')).slice(0, 2), ['1', '2']);
+    // âmbar é só dos arquivos soltos: o ranking inteiro fica na cor de acento
+    assert.equal(await js('Array.from(document.querySelectorAll("#lista-arquivos .linha")).every((l) => l.classList.contains("cor-acento"))'), true);
     await capturar(saida, '06-maiores-arquivos-claro.png');
 
     // setas no tablist trocam de aba
     await focar('#aba-btn-arquivos');
     await tecla('Right');
     await esperar(`document.getElementById('aba-btn-pesadas').getAttribute('aria-selected') === 'true'`, 'seta direita nas abas');
+    // a primeira carga de Pastas mais pesadas falha: a lista diz isso em vez
+    // de ficar em "Carregando…", e a faixa mostra o erro sem o prefixo em
+    // inglês do Electron
+    await esperar('document.querySelector("#lista-pesadas .vazio-erro")', 'aviso de lista que não carregou');
+    assert.equal(await texto('#erro-texto'), 'Não deu pra carregar: falha simulada');
+    await clicar('#btn-fechar-erro');
     await clicar('#aba-btn-arquivos');
 
-    // "Ver pasta" leva pra vista Pastas, dentro da pasta do arquivo
+    // "Ir até a pasta" leva pra vista Pastas, dentro da pasta do arquivo, com
+    // o foco na lista (o botão clicado sumiu com a troca de aba)
+    assert.deepEqual(await textos('#lista-arquivos .linha:nth-child(1) .acoes button'), ['No Explorer', 'Ir até a pasta']);
     await clicar('#lista-arquivos .linha:nth-child(1) .acoes button:nth-child(2)');
-    await esperar(`document.querySelector('#trilha .trilha-item.atual')?.textContent === 'Videos'`, 'Ver pasta');
+    await esperar(`document.querySelector('#trilha .trilha-item.atual')?.textContent === 'Videos'`, 'Ir até a pasta');
     assert.equal(await js('document.getElementById("aba-pastas").hidden'), false);
     assert.equal(await js('document.getElementById("aba-btn-pastas").getAttribute("aria-selected")'), 'true');
+    await esperar('document.getElementById("lista-pastas").contains(document.activeElement)', 'foco na lista depois do Ir até a pasta');
 
-    // --- Pastas mais pesadas ---
+    // um clique na linha do ranking também navega, como em Pastas mais pesadas
+    await clicar('#aba-btn-arquivos');
+    await clicar('#lista-arquivos .linha:nth-child(2)');
+    await esperar(`document.querySelector('#trilha .trilha-item.atual')?.textContent === 'Steam'`, 'clique na linha de Maiores arquivos');
+
+    // --- Pastas mais pesadas: voltar pra aba que falhou tenta de novo ---
     await clicar('#aba-btn-pesadas');
     await esperar('document.querySelector("#lista-pesadas .linha")', 'pastas mais pesadas');
     const pesada = await js('document.querySelector("#lista-pesadas .linha").dataset.caminho');
@@ -478,23 +585,33 @@ async function fumaca() {
     await esperar('document.querySelector("#lista-erros .vazio")', 'sem permissão vazio');
     assert.ok((await texto('#lista-erros .vazio')).startsWith('Tudo foi lido'));
     assert.equal(await texto('#contador-erros'), '0');
+    assert.equal(await js('getComputedStyle(document.getElementById("contador-erros")).display'), 'none', 'contador zero escondido');
     await capturar(saida, '08-sem-permissao-claro.png');
 
     // --- erro do Explorer vira faixa dispensável ---
     await clicar('#aba-btn-pastas');
     respostaAbrir = 'Acesso negado';
+    await focar('#cabecalho-pasta .cabecalho-acoes button');
     await clicar('#cabecalho-pasta .cabecalho-acoes button');
     await esperar(visivel('#erro-geral'), 'faixa de erro');
     assert.equal(await texto('#erro-texto'), 'Não deu pra abrir no Explorer: Acesso negado');
+    await focar('#btn-fechar-erro');
     await clicar('#btn-fechar-erro');
     await esperar('document.getElementById("erro-geral").hidden', 'fechar faixa de erro');
+    // o botão de fechar sumiu: o foco volta pra onde estava antes do erro
+    assert.equal(await js('document.activeElement.matches("#cabecalho-pasta .cabecalho-acoes button")'), true, 'foco volta depois de fechar o erro');
     respostaAbrir = '';
 
-    // --- janela mínima ---
+    // --- janela mínima: a trilha leva à raiz e o foco fica na trilha ---
     await clicar('#trilha .trilha-item');
     await esperar('document.querySelectorAll("#trilha .trilha-item").length === 1', 'trilha leva à raiz');
+    assert.equal(await js('document.activeElement.matches("#trilha .trilha-item.atual")'), true, 'foco na trilha depois de navegar por ela');
     await tamanhoJanela(820, 520);
     await conferirSemRolagemLateral('resultado na janela mínima');
+    await conferirLegendaDoDisco('janela mínima');
+    await conferirAcoesCabem('janela mínima');
+    const cabemMinima = await linhasQueCabem();
+    assert.ok(cabemMinima >= 2, 'na janela 820x520 cabem só ' + cabemMinima + ' linhas sem rolar');
     await capturar(saida, '09-minima-claro.png');
     await tema('dark');
     await capturar(saida, '09-minima-escuro.png');
@@ -506,7 +623,7 @@ async function fumaca() {
 
     // --- Varrer de novo, no mesmo alvo ---
     await tamanhoJanela(1100, 720);
-    await clicar('#btn-varrer');
+    await clicar('.cartao-disco .btn-varrer-disco');
     await esperar(visivel('#tela-resultado') + ' && document.querySelectorAll("#lista-pastas .linha").length === 4', 'primeira varredura');
     const antes = varreduras.length;
     await clicar('#aba-btn-arquivos');
@@ -515,7 +632,7 @@ async function fumaca() {
     assert.equal(varreduras[antes], fixture.raiz, 'varre de novo o mesmo alvo');
     // volta pra vista Pastas, na raiz, com as abas recarregadas
     await esperar(`document.getElementById('aba-btn-pastas').getAttribute('aria-selected') === 'true' && document.querySelectorAll('#lista-pastas .linha').length === 4`, 'resultado de novo');
-    assert.equal(await trilhaAtual(), fixture.raiz);
+    assert.equal(await trilhaAtual(), path.basename(fixture.raiz));
     assert.equal(await js('document.getElementById("lista-arquivos").childElementCount'), 0, 'lista da varredura anterior foi limpa');
 
     // --- janela grande ---
@@ -530,7 +647,8 @@ async function fumaca() {
     await esperar(visivel('#erro-geral'), 'aviso de fora do Electron', 5000, solta);
     const aviso = await js('document.getElementById("erro-texto").textContent', solta);
     assert.ok(aviso.includes('fora do Electron'), aviso);
-    assert.equal(await js('document.getElementById("btn-varrer").disabled', solta), true);
+    assert.equal(await js('document.getElementById("cartao-pasta").getAttribute("aria-disabled")', solta), 'true');
+    assert.equal(await js('document.querySelectorAll(".btn-varrer-disco").length', solta), 0);
     solta.destroy();
 
     assert.deepEqual(errosDaPagina, [], 'sem erro no console (CSP inclusa)');
@@ -596,16 +714,20 @@ function montarDemo() {
           f('Roaming', 7.9 * GB, 52310, 6120),
           f('LocalLow', 640 * MB, 1310, 210),
         ]),
+        // listada arquivo por arquivo: é a pasta das capturas de arquivos soltos
         p('Downloads', [], {
           soltos: [
             ['Fotos-Casamento-2024.zip', 7.8 * GB, 301],
             ['ubuntu-24.04.2-desktop-amd64.iso', 5.91 * GB, 62],
             ['Win11_24H2_BrazilianPortuguese_x64.iso', 5.43 * GB, 118],
             ['DaVinci_Resolve_19.1_Windows.zip', 3.2 * GB, 41],
+            ['backup-celular-2023.zip', 2.1 * GB, 390],
+            ['android-studio-2024.2.2.13-windows.exe', 1.2 * GB, 150],
             ['Docker Desktop Installer.exe', 612 * MB, 33],
             ['VSCodeUserSetup-x64-1.96.2.exe', 98 * MB, 20],
+            ['extrato-conta-2025.pdf', 2.4 * MB, 12],
+            ['curriculo-ana.pdf', 380 * KB, 205],
           ],
-          resto: [2.9 * GB, 214],
         }),
         p('Videos', [
           f('Captures', 5.4 * GB, 212, 3),
@@ -613,9 +735,9 @@ function montarDemo() {
           soltos: [['Viagem Chapada 2025.mp4', 11.6 * GB, 84], ['aula-gravada-03.mkv', 3.1 * GB, 12]],
           resto: [1.9 * GB, 41],
         }),
-        f('projetos', 14.2 * GB, 312480, 41066),
-        f('Pictures', 12.4 * GB, 9812, 214),
-        f('Documents', 9.6 * GB, 23114, 1804),
+        f('projetos', 22.4 * GB, 398120, 52310),
+        f('Pictures', 26.8 * GB, 21480, 388),
+        f('Documents', 12.8 * GB, 26210, 1966),
         f('OneDrive', 4.4 * GB, 6210, 540),
         p('Desktop', [], { resto: [1.2 * GB, 86] }),
       ]),
@@ -685,15 +807,16 @@ function montarDemo() {
     trancada('System Volume Information', 'EPERM'),
     trancada('Recovery', 'EPERM'),
     trancada('Config.Msi', 'EPERM'),
-  ], {
-    soltos: [['pagefile.sys', 16 * GB, 0], ['hiberfil.sys', 12.7 * GB, 0], ['swapfile.sys', 256 * MB, 3]],
-  });
+  ]);
 
   const raiz = 'C:\\';
   const maiores = [];
   const pesadas = [];
   const arquivosPorPasta = new Map();
-  const semPermissao = [{ caminho: 'C:\\DumpStack.log.tmp', codigo: 'EBUSY' }];
+  // Como num C:\ de verdade: o Windows não deixa nem ler os atributos destes
+  // (EPERM no lstat), então eles ficam fora da soma e dos arquivos soltos.
+  const semPermissao = ['pagefile.sys', 'hiberfil.sys', 'swapfile.sys', 'DumpStack.log.tmp']
+    .map((nome) => ({ caminho: raiz + nome, codigo: 'EPERM' }));
   const totais = { pastas: 0, arquivos: 0, bytes: 0, links: 14, semPermissao: 0 };
 
   function construir(def, pai, caminho) {
@@ -827,15 +950,22 @@ async function demo() {
 
   terminarVarredura();
   await esperar('document.querySelectorAll("#lista-pastas .linha").length > 5', 'resultado da demo');
+  await js('document.activeElement && document.activeElement.blur()');
+  // pagefile.sys e companhia não são lidos: nada de arquivos soltos na raiz,
+  // e pasta sem permissão fica com tamanho desconhecido, não "0 B"
+  assert.equal(await js('!!document.querySelector("#lista-pastas .linha.arquivos-soltos")'), false, 'raiz sem arquivos soltos');
+  assert.equal(await texto('#lista-pastas .linha[data-caminho="C:\\\\System Volume Information"] .tam'), '—');
   await capturar(saida, 'pastas-claro.png', LARGURA);
 
-  // arquivos soltos da raiz: hiberfil.sys e pagefile.sys
+  // arquivos soltos de verdade: os instaladores e ISOs esquecidos em Downloads
+  for (const nome of ['Users', 'Ana', 'Downloads']) await entrar(nome);
   await clicar('#lista-pastas .linha.arquivos-soltos');
-  await esperar('document.querySelectorAll(".arquivos-lista .linha").length === 3', 'arquivos soltos da raiz');
-  await js('document.querySelector(".linha.arquivos-soltos").scrollIntoView({ block: "center" })');
+  await esperar('document.querySelectorAll(".arquivos-lista .linha").length === 10', 'arquivos soltos de Downloads');
   await capturar(saida, 'arquivos-soltos-claro.png', LARGURA);
 
-  for (const nome of ['Users', 'Ana', 'AppData', 'Local']) await entrar(nome);
+  await clicar('#btn-subir');
+  await esperar(`document.querySelector('#trilha .trilha-item.atual')?.textContent === 'Ana'`, 'subir pra Ana');
+  for (const nome of ['AppData', 'Local']) await entrar(nome);
   await js('document.getElementById("tela-resultado").scrollTop = 0');
   await tema('dark');
   await capturar(saida, 'pastas-escuro.png', LARGURA);

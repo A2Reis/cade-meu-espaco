@@ -408,6 +408,14 @@ button {
   scrollbar-color: var(--rolagem) transparent;
 }
 
+/* As abas grudam no topo e a lista rola por baixo delas. Sem esta folga, a
+   linha focada pelo teclado (setas, Shift+Tab) pararia escondida atrás das
+   abas. A altura delas vem do renderer (ResizeObserver). */
+.tela-resultado {
+  scroll-padding-top: calc(var(--altura-vistas, 90px) + var(--e-3));
+  scroll-padding-bottom: var(--e-3);
+}
+
 .miolo {
   width: 100%;
   max-width: var(--largura-miolo);
@@ -578,11 +586,11 @@ button {
   color: var(--critico-tinta);
 }
 
+/* o motivo em palavras; o código do sistema fica no title */
 .selo-aviso {
   background: var(--aviso-suave);
   color: var(--aviso-tinta);
-  font-family: var(--fonte-mono);
-  font-weight: 400;
+  cursor: help;
 }
 
 .aviso-inline {
@@ -663,6 +671,10 @@ button {
   color: var(--ok);
 }
 
+.vazio-erro .icone {
+  color: var(--erro);
+}
+
 /* ---------- anéis (SVG criado no renderer) ---------- */
 
 .anel {
@@ -730,32 +742,23 @@ button {
   font-size: var(--t-corpo);
 }
 
+/* Flex que quebra linha em vez de grade: quem sobra sozinho na última linha
+   estica até a borda. Com um disco só (notebook), disco e pasta dividem a
+   linha; com três, a pasta fica embaixo, na largura toda. */
 .grade-discos {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--e-3);
 }
 
 .cartao-disco,
 .cartao-pasta {
   position: relative;
+  flex: 1 1 300px;
+  min-width: 0;
   min-height: 120px;
   padding: var(--e-4);
-  cursor: pointer;
   transition: border-color var(--rapido), box-shadow var(--medio), background var(--rapido);
-}
-
-.cartao-disco:hover,
-.cartao-pasta:hover {
-  border-color: var(--borda-forte);
-  box-shadow: var(--sombra-2);
-}
-
-/* o alvo atual */
-.cartao-disco[aria-current="true"],
-.cartao-pasta[aria-current="true"] {
-  border-color: var(--acento);
-  box-shadow: 0 0 0 1px var(--acento), var(--sombra-2);
 }
 
 .cartao-disco {
@@ -797,25 +800,34 @@ button {
   margin-top: var(--e-2);
 }
 
-/* a pasta ocupa uma linha inteira embaixo dos discos, pra não sobrar
-   sozinha num canto quando há três discos */
+/* Borda sólida: tracejado lembra "solte aqui", e soltar pasta não faz nada.
+   Sem pasta escolhida, o cartão inteiro é o botão que abre o seletor. */
 .cartao-pasta {
-  grid-column: 1 / -1;
   min-height: 72px;
   padding: var(--e-3) var(--e-4);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--e-3) var(--e-4);
-  border-style: dashed;
-  border-color: var(--borda-forte);
-  background: transparent;
+  background: var(--superficie-2);
   box-shadow: none;
 }
 
+.cartao-pasta:not(.escolhida):not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+.cartao-pasta:not(.escolhida):not([aria-disabled="true"]):hover {
+  border-color: var(--borda-forte);
+  background: var(--superficie);
+  box-shadow: var(--sombra-2);
+}
+
+.cartao-pasta[aria-disabled="true"] {
+  opacity: 0.6;
+}
+
 .cartao-pasta.escolhida {
-  border-style: solid;
-  border-color: var(--borda);
   background: var(--superficie);
   box-shadow: var(--sombra-1);
 }
@@ -823,12 +835,6 @@ button {
 .cartao-pasta.destaque {
   border-color: var(--acento);
   background: var(--acento-suave);
-}
-
-/* pasta escolhida e marcada como alvo: mesmo destaque do disco escolhido */
-.cartao-pasta.escolhida[aria-current="true"] {
-  border-color: var(--acento);
-  box-shadow: 0 0 0 1px var(--acento), var(--sombra-2);
 }
 
 .cartao-pasta-icone {
@@ -870,33 +876,6 @@ button {
   display: flex;
   gap: var(--e-2);
   margin-left: auto;
-}
-
-.barra-alvo {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--e-4);
-  padding: var(--e-3) var(--e-3) var(--e-3) var(--e-5);
-  background: var(--superficie);
-  border: 1px solid var(--borda);
-  border-radius: var(--raio-cartao);
-  box-shadow: var(--sombra-1);
-}
-
-.alvo {
-  display: flex;
-  align-items: baseline;
-  gap: var(--e-2);
-  min-width: 0;
-  color: var(--tinta-2);
-  white-space: nowrap;
-}
-
-.alvo .caminho {
-  color: var(--tinta);
-  font-size: var(--t-corpo);
-  font-weight: 600;
 }
 
 .dicas {
@@ -958,6 +937,11 @@ button {
   font-weight: 600;
 }
 
+/* comando curto que não pode quebrar no hífen ("--force") */
+.dicas-lista code.inteiro {
+  white-space: nowrap;
+}
+
 .dicas-lista p {
   margin-top: var(--e-1);
   color: var(--tinta-2);
@@ -1006,16 +990,19 @@ button {
   transition: stroke-dasharray 400ms ease-out;
 }
 
+/* Um sinal por lugar. Disco inteiro: o arco violeta na trilha é o progresso
+   e o arco âmbar fino, por dentro, gira. Pasta: sem total pra medir, só a
+   fatia âmbar gira na trilha. */
 .anel-varredura .orbita {
   transform-box: view-box;
   transform-origin: 50% 50%;
   animation: girar 2.6s linear infinite;
 }
 
-.anel-varredura.indeterminado .giro-arco {
-  transform-box: view-box;
-  transform-origin: 50% 50%;
-  animation: girar 1.3s linear infinite;
+.anel-varredura:not(.indeterminado) .orbita-trilha,
+.anel-varredura.indeterminado .orbita-dentro,
+.anel-varredura.indeterminado .anel-progresso {
+  display: none;
 }
 
 @keyframes girar {
@@ -1039,10 +1026,19 @@ button {
   white-space: nowrap;
 }
 
-.varredura-rotulo .mono {
-  overflow: hidden;
-  text-overflow: ellipsis;
+.varredura-rotulo > span:first-child {
+  flex: none;
+}
+
+/* o alvo encolhe pelo meio e o nome da pasta fica sempre visível */
+.varredura-alvo {
+  display: flex;
+  min-width: 0;
+}
+
+.varredura-alvo .caminho {
   color: var(--tinta);
+  font-size: var(--t-corpo);
   font-weight: 600;
 }
 
@@ -1224,18 +1220,40 @@ button {
   color: var(--tinta-3);
 }
 
+/* "N sem permissão": leva pra aba que lista quais */
+.chip-aviso {
+  border-color: var(--aviso-borda);
+  background: var(--aviso-suave);
+  color: var(--aviso-tinta);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--rapido);
+}
+
+.chip-aviso .icone {
+  color: currentColor;
+}
+
+.chip-aviso:hover {
+  border-color: var(--aviso);
+}
+
+.chip-aviso .chip-seta {
+  width: 12px;
+  height: 12px;
+  margin-left: -2px;
+}
+
+.resumo-aviso {
+  grid-column: 1 / -1;
+}
+
 .comparacao {
   display: flex;
   flex-direction: column;
   gap: var(--e-3);
   min-width: 0;
   padding: var(--e-4);
-}
-
-.comparacao-titulo {
-  color: var(--tinta-2);
-  font-size: var(--t-legenda);
-  font-weight: 600;
 }
 
 .barra-empilhada {
@@ -1282,6 +1300,7 @@ button {
   padding: 0;
   list-style: none;
   font-size: var(--t-legenda);
+  line-height: 18px;
   color: var(--tinta-2);
 }
 
@@ -1304,12 +1323,17 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+/* legenda numa linha; embaixo, a frase do disco e o "Por que" */
 .comparacao-rodape {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--e-1) var(--e-4);
+  gap: var(--e-2) var(--e-4);
+}
+
+.comparacao-rodape .legenda {
+  flex: 1 0 100%;
 }
 
 .disco-diz {
@@ -1356,13 +1380,6 @@ button {
   color: var(--tinta-2);
   font-size: var(--t-legenda);
   line-height: 18px;
-}
-
-.resumo-avisos {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  gap: var(--e-2);
 }
 
 /* abas e trilha: grudam no topo enquanto a lista rola */
@@ -1462,9 +1479,9 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+/* zero não chama atenção pra uma aba vazia */
 .contador-aba.zero {
-  background: var(--superficie-ativa);
-  color: var(--tinta-3);
+  display: none;
 }
 
 .navegacao {
@@ -1557,12 +1574,18 @@ button {
 }
 
 /* cabeçalho da pasta aberta */
+/* compacto de propósito: o que a pessoa procura é a lista logo abaixo */
 .cabecalho-pasta {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--e-5);
-  padding: var(--e-4) var(--e-5);
+  gap: var(--e-4);
+  padding: var(--e-3) var(--e-4);
+}
+
+.cabecalho-anel .anel {
+  width: 64px;
+  height: 64px;
 }
 
 .cabecalho-info {
@@ -1584,10 +1607,22 @@ button {
 
 .cabecalho-tamanho {
   font-family: var(--fonte-display);
-  font-size: var(--t-titulo);
+  font-size: var(--t-subtitulo);
   font-weight: 600;
-  line-height: 36px;
+  line-height: 28px;
   font-variant-numeric: tabular-nums;
+}
+
+.cabecalho-dados {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--e-3);
+  min-width: 0;
+}
+
+.cabecalho-dados .cabecalho-conteudo {
+  flex: 1 1 240px;
 }
 
 .cabecalho-conteudo {
@@ -1629,7 +1664,7 @@ button {
   --col-barra: minmax(88px, 1fr);
   --col-tam: 84px;
   --col-pct: 52px;
-  --col-acoes: 96px;
+  --col-acoes: 108px;
 }
 
 .lista:empty {
@@ -1647,16 +1682,24 @@ button {
   transition: background var(--rapido);
 }
 
-.linha:hover {
-  background: var(--superficie-hover);
-}
-
+/* só acende no mouse a linha que faz algo ao clicar */
 .linha.clicavel {
   cursor: pointer;
 }
 
-.linha:focus-visible {
+.linha.clicavel:hover {
+  background: var(--superficie-hover);
+}
+
+/* O foco fica no botão do nome, mas o contorno vai na linha inteira, que é
+   o que a pessoa enxerga como "o item". */
+.linha:has(> .texto button.nome:focus-visible) {
+  outline: 2px solid var(--foco);
   outline-offset: -2px;
+}
+
+.linha button.nome:focus-visible {
+  outline: none;
 }
 
 .marcador {
@@ -1686,11 +1729,6 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-.cor-soltos .rank {
-  background: var(--achado-suave);
-  color: var(--achado-tinta);
-}
-
 .texto {
   display: flex;
   flex-direction: column;
@@ -1713,6 +1751,26 @@ button {
   text-overflow: ellipsis;
 }
 
+/* nome que é botão: parece texto, a linha inteira é que parece clicável */
+button.nome {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nome-texto {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .expande {
   width: 12px;
   height: 12px;
@@ -1720,7 +1778,7 @@ button {
   transition: transform var(--medio);
 }
 
-.linha[aria-expanded="true"] .expande {
+.nome[aria-expanded="true"] .expande {
   transform: rotate(90deg);
 }
 
@@ -1784,22 +1842,36 @@ button {
   gap: 2px;
 }
 
-/* linha dos arquivos soltos: a cor de "achado" */
+/* Na vista Pastas cada linha tem um botão só ("No Explorer"): à esquerda
+   da coluna, ele fica alinhado de cima a baixo. */
+.lista-pastas .acoes {
+  justify-content: flex-start;
+}
+
+/* linha dos arquivos soltos: a cor de "achado". Hover leve e texto mais
+   forte, pra continuar legível (AA) nos dois temas. */
 .linha.arquivos-soltos {
   background: var(--achado-suave);
 }
 
-.linha.arquivos-soltos:hover {
-  background: color-mix(in srgb, var(--achado-suave) 70%, var(--achado) 30%);
+.linha.arquivos-soltos.clicavel:hover {
+  background: color-mix(in srgb, var(--achado-suave) 90%, var(--achado));
 }
 
 .linha.arquivos-soltos .nome {
   color: var(--tinta);
 }
 
-/* subpasta sem permissão: não tem tamanho pra comparar */
-.lista-pastas .linha.trancada .detalhe {
+.linha.arquivos-soltos .detalhe,
+.linha.arquivos-soltos .pct {
+  color: var(--tinta-2);
+}
+
+/* subpasta sem permissão: o motivo em laranja, o cadeado neutro (laranja
+   perto das fatias coloridas se leria como uma delas) */
+.lista-pastas .linha.trancada .motivo {
   color: var(--aviso-tinta);
+  cursor: help;
 }
 
 .linha.trancada .barra {
@@ -1814,7 +1886,7 @@ button {
 
 /* arquivos soltos abertos: um bloco na cor de achado, na mesma grade da
    lista, pra tamanho e % continuarem alinhados com as pastas */
-.linha.arquivos-soltos[aria-expanded="true"] {
+.linha.arquivos-soltos.aberta {
   border-radius: var(--raio-linha) var(--raio-linha) 0 0;
 }
 
@@ -1839,10 +1911,6 @@ button {
   min-height: 44px;
 }
 
-.arquivos-lista .linha:hover {
-  background: color-mix(in srgb, var(--achado-suave) 85%, var(--superficie));
-}
-
 .arquivos-lista .marcador {
   color: var(--achado-tinta);
 }
@@ -1860,7 +1928,11 @@ button {
   padding-left: 52px;
 }
 
-/* rankings: sem coluna de porcentagem */
+/* rankings: sem coluna de porcentagem; a barra cede espaço pro caminho */
+.lista.lista-ranking {
+  --col-barra: minmax(72px, 0.6fr);
+}
+
 .lista-ranking .linha {
   grid-template-columns: 32px var(--col-nome) var(--col-barra) var(--col-tam) auto;
 }
@@ -1912,7 +1984,11 @@ button {
     --col-barra: minmax(72px, 1fr);
     --col-tam: 76px;
     --col-pct: 44px;
-    --col-acoes: 84px;
+    --col-acoes: 104px;
+  }
+
+  .lista.lista-ranking {
+    --col-barra: minmax(56px, 0.5fr);
   }
 
   .linha {
@@ -1920,7 +1996,32 @@ button {
   }
 }
 
-/* janela baixa (a mínima tem 520 px): resumo mais enxuto */
+/* Janela até 800 px de altura (a padrão tem 720): o resumo encolhe pra a
+   lista começar mais alto. A comparação aperta as folgas e fica com a altura
+   do total e dos chips ao lado, sem perder a legenda. */
+@media (max-height: 800px) {
+  .resultado-topo {
+    gap: var(--e-3);
+    padding-top: var(--e-4);
+    padding-bottom: var(--e-3);
+  }
+
+  .resumo-total .numero-destaque {
+    font-size: var(--t-titulo);
+    line-height: 36px;
+  }
+
+  .comparacao {
+    padding: var(--e-3) var(--e-4);
+  }
+
+  .comparacao-rodape {
+    row-gap: var(--e-1);
+  }
+}
+
+/* janela baixa (a mínima tem 520 px): o mínimo pra caber duas linhas da
+   lista sem rolar */
 @media (max-height: 600px) {
   .tela-inicio .miolo {
     padding-top: var(--e-5);
@@ -1932,20 +2033,67 @@ button {
     padding: var(--e-5);
   }
 
-  .resultado-topo {
-    gap: var(--e-3);
-    padding-top: var(--e-4);
-    padding-bottom: var(--e-3);
-  }
-
   .numero-destaque {
     font-size: var(--t-titulo);
     line-height: 36px;
   }
 
+  .resultado-topo {
+    padding-top: var(--e-3);
+  }
+
+  /* número e rótulo numa linha só */
+  .resumo-total {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--e-2);
+  }
+
+  .resumo-principal {
+    align-items: center;
+  }
+
   .comparacao {
     gap: var(--e-2);
-    padding: var(--e-3) var(--e-4);
+    padding: 10px var(--e-4);
+  }
+
+  /* a frase sai (a legenda já diz somado, fora da soma e livre) e o "Por
+     que" sobe pra linha da legenda: uma linha a menos em cima da lista */
+  .comparacao .disco-diz {
+    display: none;
+  }
+
+  .comparacao-rodape .legenda {
+    flex: 1 1 auto;
+  }
+
+  .abas [role="tab"] {
+    height: 36px;
+  }
+
+  .navegacao {
+    min-height: 40px;
+    padding: var(--e-1) 0;
+  }
+
+  .vista {
+    gap: var(--e-2);
+  }
+
+  .cabecalho-pasta {
+    padding: var(--e-2) var(--e-3);
+  }
+
+  .cabecalho-anel .anel {
+    width: 48px;
+    height: 48px;
+  }
+
+  /* o aviso de só leitura já está no subtítulo do início */
+  .barra-status {
+    display: none;
   }
 }
 
@@ -1958,8 +2106,7 @@ button {
     animation-iteration-count: 1 !important;
   }
 
-  .anel-varredura .orbita,
-  .anel-varredura.indeterminado .giro-arco {
+  .anel-varredura .orbita {
     animation: none;
   }
 }

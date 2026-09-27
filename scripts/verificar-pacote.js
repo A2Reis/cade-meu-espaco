@@ -191,8 +191,28 @@ async function fecharApp(filho, porta) {
   }
 }
 
+function hashDe(arquivo) {
+  return require('node:crypto').createHash('sha256').update(fs.readFileSync(arquivo)).digest('hex');
+}
+
+// O Controle Inteligente de Aplicativos do Windows aceita o electron.exe
+// oficial (tem reputação) e barra qualquer cópia editada. Por isso o pacote
+// sai com win.signAndEditExecutable: false e o ícone vai à parte.
+function conferirExecutavel() {
+  console.log('Executável');
+  const electron = path.join(RAIZ, 'node_modules', 'electron', 'dist', 'electron.exe');
+  conferir(
+    hashDe(EXE) === hashDe(electron),
+    `${path.basename(EXE)} igual ao electron.exe oficial (sem edição; editado, o Windows pode barrar)`
+  );
+  const icone = path.join(path.dirname(EXE), 'resources', 'icone.ico');
+  conferir(fs.existsSync(icone), 'resources\\icone.ico no pacote (ícone da janela e dos atalhos)');
+}
+
 async function verificar() {
   if (!fs.existsSync(EXE)) throw new Error(`não achei ${EXE}. Rode antes: npm run empacotar`);
+  // só no pacote de verdade, não quando confere o app.asar pelo Electron do projeto
+  if (!process.argv[2]) conferirExecutavel();
   console.log(`Abrindo ${[EXE, ...ARGUMENTOS].map((c) => path.relative(RAIZ, c) || c).join(' ')}`);
 
   const porta = await portaLivre();

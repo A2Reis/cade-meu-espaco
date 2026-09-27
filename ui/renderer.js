@@ -123,6 +123,20 @@
     return b;
   }
 
+  // Nas linhas, o que sai do app tem sempre o mesmo rótulo e a seta pra
+  // fora; o que navega aqui dentro diz "Ir até a pasta". "Abrir" ao lado de
+  // uma pasta que já abre no clique se leria como "entrar nela".
+  function botaoExplorer(caminho, ehArquivo, titulo) {
+    return botao('No Explorer', () => abrir(caminho, ehArquivo), {
+      icone: 'abrir',
+      titulo: titulo || (ehArquivo ? 'Abrir o Explorer com este arquivo selecionado' : 'Abrir esta pasta no Explorer'),
+    });
+  }
+
+  function botaoIrAte(caminho, titulo) {
+    return botao('Ir até a pasta', () => irParaPasta(caminho, true), { icone: 'ir', titulo });
+  }
+
   // Dentro de uma lista (role=list), nota e estado vazio contam como item.
   function nota(texto, naLista) {
     const n = criar('p', 'nota', texto);
@@ -703,7 +717,7 @@
     barra.setAttribute('role', 'img');
     barra.setAttribute('aria-label',
       'Somado ' + fmt.formatarBytes(soma) + ', usado ' + fmt.formatarBytes(disco.usado) + ', livre ' + fmt.formatarBytes(disco.livre) + ' de ' + fmt.formatarBytes(disco.total));
-    // cada pedaço diz o que é no title: em janela baixa a legenda some
+    // a legenda embaixo explica os pedaços; o title repete, pra quem passa o mouse
     const segmento = (classe, valor, rotulo) => {
       if (valor <= 0) return;
       const s = criar('span', 'seg ' + classe);
@@ -725,12 +739,14 @@
     item('seg-somado', 'Somado na varredura', soma);
     if (fora > 0) item('seg-fora', 'Usado, mas fora da soma', fora);
     item('seg-livre', 'Livre', disco.livre);
-    caixa.append(legenda);
 
+    // Legenda, frase e "Por que" dividem um bloco que quebra linha: em janela
+    // baixa a frase sai e o "Por que" sobe pra linha da legenda (style.css).
+    // O livre já está na legenda, então a frase fica com usado e total.
     const rodape = criar('div', 'comparacao-rodape');
-    rodape.append(criar('p', 'disco-diz',
-      'O disco diz: ' + fmt.formatarBytes(disco.total) + ' no total, ' + fmt.formatarBytes(disco.usado) + ' usados, ' +
-      fmt.formatarBytes(disco.livre) + ' livres (' + fmt.formatarPorcentagem(disco.usado, disco.total) + ' cheio).'));
+    rodape.append(legenda, criar('p', 'disco-diz',
+      'O disco diz: ' + fmt.formatarBytes(disco.usado) + ' usados de ' + fmt.formatarBytes(disco.total) +
+      ' (' + fmt.formatarPorcentagem(disco.usado, disco.total) + ' cheio).'));
     caixa.append(rodape);
 
     const diferenca = disco.usado - soma;
@@ -1102,7 +1118,7 @@
         titulo: f.caminho,
         detalhe,
         celulas,
-        acoes: [botao('Abrir', () => abrir(f.caminho, false), { icone: 'abrir', titulo: 'Abrir esta pasta no Explorer' })],
+        acoes: [botaoExplorer(f.caminho, false)],
         aoClicar: (teclado) => navegar(f.caminho, { focar: teclado ? 'primeira' : null }),
         fatia: f.erro ? null : cor === 'cor-outras' ? 'outras' : f.caminho,
       }));
@@ -1114,7 +1130,7 @@
       caixa.setAttribute('role', 'listitem');
       let aberto = false;
       const rotulo = () => fmt.plural(d.nArquivos, 'arquivo') + (aberto ? ' · clique pra recolher' : ' · clique pra listar');
-      // Sem "Abrir" aqui: seria a mesma pasta do "Abrir no Explorer" do cabeçalho.
+      // Sem "No Explorer" aqui: seria a mesma pasta do "Abrir no Explorer" do cabeçalho.
       const l = linha({
         classe: 'arquivos-soltos',
         cor: 'cor-soltos',
@@ -1189,7 +1205,7 @@
           celula('tam', fmt.formatarBytes(a.tamanho)),
           celula('pct', fmt.formatarPorcentagem(a.tamanho, base)),
         ],
-        acoes: [botao('Mostrar', () => abrir(a.caminho, true), { icone: 'abrir', titulo: 'Abrir o Explorer com este arquivo selecionado' })],
+        acoes: [botaoExplorer(a.caminho, true)],
       }));
     }
     caixa.append(lista);
@@ -1231,8 +1247,8 @@
         detalhe: [caminhoMono(a.pasta), criar('span', 'data', 'modificado em ' + fmt.formatarData(a.modificado))],
         celulas: [celulaBarra(a.tamanho / maior), celula('tam', fmt.formatarBytes(a.tamanho))],
         acoes: [
-          botao('Mostrar', () => abrir(a.caminho, true), { icone: 'abrir', titulo: 'Abrir o Explorer com este arquivo selecionado' }),
-          botao('Ver pasta', () => irParaPasta(a.pasta, true), { icone: 'ir', titulo: 'Navegar até a pasta dele aqui dentro' }),
+          botaoExplorer(a.caminho, true),
+          botaoIrAte(a.pasta, 'Ver a pasta dele aqui no app'),
         ],
         aoClicar: (teclado) => irParaPasta(a.pasta, teclado),
       }));
@@ -1262,8 +1278,8 @@
         detalhe,
         celulas: [celulaBarra(p.tamanho / maior), celula('tam', fmt.formatarBytes(p.tamanho))],
         acoes: [
-          botao('Abrir', () => abrir(p.caminho, false), { icone: 'abrir', titulo: 'Abrir esta pasta no Explorer' }),
-          botao('Ver pasta', () => irParaPasta(p.caminho, true), { icone: 'ir', titulo: 'Navegar até ela aqui dentro' }),
+          botaoExplorer(p.caminho, false),
+          botaoIrAte(p.caminho, 'Ver esta pasta aqui no app'),
         ],
         aoClicar: (teclado) => irParaPasta(p.caminho, teclado),
       }));
@@ -1292,7 +1308,7 @@
         titulo: e.caminho,
         detalhe: pai && semBarraFinal(pai) !== semBarraFinal(e.caminho) ? [caminhoMono(pai)] : null,
         celulas: [selo],
-        acoes: [botao('Abrir', () => abrir(e.caminho, false), { icone: 'abrir', titulo: 'Tentar abrir no Explorer' })],
+        acoes: [botaoExplorer(e.caminho, false, 'Tentar abrir no Explorer')],
       }));
     }
     // a varredura guarda até 1.000 itens; o total vem no resumo

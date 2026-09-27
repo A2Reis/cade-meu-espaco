@@ -40,14 +40,22 @@
       "buildResources": "build"
     },
     "publish": null,
+    "disableAsarIntegrity": true,
     "files": [
       "main.js",
       "preload.js",
       "src/**",
       "ui/**"
     ],
+    "extraResources": [
+      {
+        "from": "build/icon.ico",
+        "to": "icone.ico"
+      }
+    ],
     "win": {
       "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
       "target": [
         {
           "target": "nsis",

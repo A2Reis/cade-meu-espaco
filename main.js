@@ -35,6 +35,16 @@ function temaAtual() {
   return nativeTheme.shouldUseDarkColors ? TEMAS.escuro : TEMAS.claro;
 }
 
+// Ícone da janela e da barra de tarefas. O .exe empacotado é o do Electron
+// sem edição (package.json, win.signAndEditExecutable: false), pra não perder
+// a reputação que o Controle Inteligente de Aplicativos do Windows exige;
+// então o ícone vem de fora dele: resources\icone.ico (build.extraResources).
+function caminhoDoIcone() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'icone.ico')
+    : path.join(__dirname, 'build', 'icon.ico');
+}
+
 function barraDeTitulo() {
   const t = temaAtual();
   return { color: t.fundo, symbolColor: t.simbolos, height: ALTURA_BARRA };
@@ -47,9 +57,7 @@ function criarJanela() {
     minWidth: 820,
     minHeight: 520,
     title: 'Cadê meu espaço?',
-    // Empacotado, o Windows já usa o ícone embutido no .exe. No npm start o
-    // .exe é o do Electron, então aponta pro ícone do projeto.
-    icon: app.isPackaged ? undefined : path.join(__dirname, 'build', 'icon.ico'),
+    icon: caminhoDoIcone(),
     // Some a barra do Windows; a página desenha a dela e o sistema desenha só
     // os três botões por cima, no canto direito.
     titleBarStyle: 'hidden',

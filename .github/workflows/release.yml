@@ -1,7 +1,8 @@
 # Gera o instalador e a versão portátil pra Windows e anexa os dois .exe ao
 # release do GitHub. Dispara ao subir uma tag v* (ex.: git tag v1.0.0 &&
 # git push origin v1.0.0) ou à mão, pela aba Actions, informando uma tag que
-# já existe. Se o release da tag já existe, só anexa ou troca os arquivos.
+# já existe. Se o release da tag já existe, só anexa ou troca os arquivos,
+# sem mexer no nome nem no texto dele. Usa o gh, que já vem no runner.
 name: Release
 
 on:
@@ -35,6 +36,17 @@ jobs:
           node-version: 24.x
           cache: npm
 
+      # Os .exe levam a version do package.json no nome e nos detalhes do
+      # instalador: tag v1.1.0 com package.json em 1.0.0 publicaria o 1.0.0.
+      - name: Conferir versão
+        shell: bash
+        run: |
+          versao="v$(node -p "require('./package.json').version")"
+          if [ "$versao" != "$TAG" ]; then
+            echo "::error::A tag $TAG não bate com a versão $versao do package.json."
+            exit 1
+          fi
+
       - run: npm ci
 
       - run: npm test
@@ -43,10 +55,12 @@ jobs:
         run: npx electron-builder --win --publish never
 
       - name: Anexar ao release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.TAG }}
-          files: dist/*.exe
-          fail_on_unmatched_files: true
-          overwrite_files: true
-          generate_release_notes: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" dist/*.exe --clobber
