@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="fundo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5b5bf6"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="224" height="224" rx="52" fill="url(#fundo)"/>
+  <!-- disco (anel) com uma fatia faltando -->
+  <circle cx="124" cy="132" r="61" fill="none" stroke="#ffffff" stroke-width="34"
+          stroke-dasharray="308.75 400" transform="rotate(-10 124 132)"/>
+  <!-- a fatia achada, puxada pra fora -->
+  <circle cx="124" cy="132" r="61" fill="none" stroke="#fbbf24" stroke-width="34"
+          stroke-dasharray="66.01 400" transform="translate(10 -10) rotate(-76 124 132)"/>
+</svg>

@@ -1,0 +1,52 @@
+# Gera o instalador e a versão portátil pra Windows e anexa os dois .exe ao
+# release do GitHub. Dispara ao subir uma tag v* (ex.: git tag v1.0.0 &&
+# git push origin v1.0.0) ou à mão, pela aba Actions, informando uma tag que
+# já existe. Se o release da tag já existe, só anexa ou troca os arquivos.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag já existente (ex.: v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Instalador e portátil pra Windows
+    runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      # O electron-builder baixa o Electron que empacota por conta própria.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.x
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Empacotar
+        run: npx electron-builder --win --publish never
+
+      - name: Anexar ao release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          files: dist/*.exe
+          fail_on_unmatched_files: true
+          overwrite_files: true
+          generate_release_notes: true

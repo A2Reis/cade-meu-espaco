@@ -6,10 +6,22 @@
 // Este programa só lê. A única ação fora da leitura é abrir a pasta ou o
 // arquivo no Explorer, e mesmo isso passa pelo shell do Electron.
 
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, nativeTheme } = require('electron');
 const path = require('node:path');
 const { Motor } = require('./src/motor');
 const { listarDiscos } = require('./src/discos');
+
+// Mesmo appId do package.json (build.appId): o Windows usa isso pra agrupar
+// a janela com o atalho do menu Iniciar na barra de tarefas.
+const APP_ID = 'br.com.a2reis.cademeuespaco';
+
+// Cores da barra de título. Têm que ser as mesmas do --fundo da interface,
+// senão aparece uma emenda onde o Windows desenha minimizar/maximizar/fechar.
+const TEMAS = {
+  claro: { fundo: '#f3f4f8', simbolos: '#1f2330' },
+  escuro: { fundo: '#16171d', simbolos: '#e6e7ee' },
+};
+const ALTURA_BARRA = 40;
 
 const motor = new Motor();
 let janela = null;
@@ -19,6 +31,15 @@ function exigirTexto(valor) {
   return valor;
 }
 
+function temaAtual() {
+  return nativeTheme.shouldUseDarkColors ? TEMAS.escuro : TEMAS.claro;
+}
+
+function barraDeTitulo() {
+  const t = temaAtual();
+  return { color: t.fundo, symbolColor: t.simbolos, height: ALTURA_BARRA };
+}
+
 function criarJanela() {
   janela = new BrowserWindow({
     width: 1100,
@@ -26,7 +47,16 @@ function criarJanela() {
     minWidth: 820,
     minHeight: 520,
     title: 'Cadê meu espaço?',
-    backgroundColor: '#f4f4f2',
+    // Empacotado, o Windows já usa o ícone embutido no .exe. No npm start o
+    // .exe é o do Electron, então aponta pro ícone do projeto.
+    icon: app.isPackaged ? undefined : path.join(__dirname, 'build', 'icon.ico'),
+    // Some a barra do Windows; a página desenha a dela e o sistema desenha só
+    // os três botões por cima, no canto direito.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: barraDeTitulo(),
+    backgroundColor: temaAtual().fundo,
+    // Só aparece com a página carregada, sem piscar em branco.
+    show: false,
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -36,17 +66,39 @@ function criarJanela() {
     },
   });
   janela.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // Arrastar um arquivo pra janela faria a página sair do app. Não deixa.
+  janela.webContents.on('will-navigate', (e) => e.preventDefault());
+  // Com titleBarStyle 'hidden' + titleBarOverlay, o Electron 44 no Windows não
+  // emite 'ready-to-show' pra janela escondida (testado). O 'did-finish-load'
+  // fica de reserva; como o fundo da janela já é o da página, não pisca.
+  let mostrada = false;
+  const mostrar = () => {
+    if (mostrada || !janela || janela.isDestroyed()) return;
+    mostrada = true;
+    janela.show();
+  };
+  janela.once('ready-to-show', mostrar);
+  janela.webContents.once('did-finish-load', mostrar);
+  janela.webContents.once('did-fail-load', mostrar);
   janela.loadFile(path.join(__dirname, 'ui', 'index.html'));
   janela.on('closed', () => {
     janela = null;
   });
 }
 
+// Tema do Windows mudou (claro/escuro): a página acompanha sozinha pelo CSS,
+// aqui só troca as cores dos botões do sistema e do fundo da janela.
+nativeTheme.on('updated', () => {
+  if (!janela || janela.isDestroyed()) return;
+  janela.setTitleBarOverlay(barraDeTitulo());
+  janela.setBackgroundColor(temaAtual().fundo);
+});
+
 motor.aoProgresso = (p) => {
   if (janela && !janela.isDestroyed()) janela.webContents.send('progresso', p);
 };
 
-app.whenReady().then(() => {
+function iniciar() {
   ipcMain.handle('discos', () => listarDiscos());
 
   ipcMain.handle('escolher-pasta', async () => {
@@ -80,9 +132,26 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) criarJanela();
   });
-});
+}
 
-app.on('window-all-closed', () => {
-  motor.encerrar();
-  if (process.platform !== 'darwin') app.quit();
-});
+// Uma janela só. Abrir de novo (pelo atalho, por exemplo) traz a que já está
+// aberta pra frente em vez de subir outra varredura em paralelo.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
+
+  app.on('second-instance', () => {
+    if (!janela) return;
+    if (janela.isMinimized()) janela.restore();
+    janela.show();
+    janela.focus();
+  });
+
+  app.whenReady().then(iniciar);
+
+  app.on('window-all-closed', () => {
+    motor.encerrar();
+    if (process.platform !== 'darwin') app.quit();
+  });
+}
