@@ -632,9 +632,10 @@ Testado no Windows 11 (build 26200), com Node 24 e Electron 44.4.3:
 - Com o Controle Inteligente de Aplicativos ligado, uma cópia editada do
   `.exe` foi barrada (com registro no log de integridade de código do
   Windows), e o `.exe` sem modificação abriu.
-- Os dois workflows foram lidos por um leitor de YAML sem erro, e a
-  conferência de versão do `release.yml` foi testada à mão (`v1.0.0` passa,
-  `v1.1.0` falha com o `package.json` em 1.0.0).
+- Os dois workflows rodando no GitHub Actions: o `testes.yml` passou no push
+  pra `main` (Ubuntu e Windows, Node 22 e 24), e o `release.yml` passou na tag
+  `v1.0.0` (conferência de versão, `npm test`, empacotamento e os dois `.exe`
+  anexados ao release, em 1 min 35 s).
 
 Na primeira versão, num Linux com Node 22.22:
 
@@ -649,7 +650,6 @@ Não testado:
   desinstalação.
 - O instalador e o portátil baixados da internet, com o SmartScreen e o
   Controle Inteligente de Aplicativos olhando.
-- Os workflows rodando de verdade no GitHub Actions.
 - Uma varredura de um C: inteiro de verdade no Windows, e o tempo que ela
   leva. Junto com isso, o comportamento com OneDrive, junctions e
   `pagefile.sys` num disco real: a lógica foi conferida no código-fonte do
