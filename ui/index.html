@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+  <title>Cadê meu espaço?</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topo">
+    <div class="titulo-linha">
+      <h1>Cadê meu espaço?</h1>
+      <span class="subtitulo">Mostra quais pastas e arquivos estão comendo o disco. Só lê, não apaga nada.</span>
+    </div>
+    <div class="controles">
+      <label for="disco">Disco</label>
+      <select id="disco"></select>
+      <button id="btn-pasta" type="button">Escolher pasta…</button>
+      <button id="btn-varrer" type="button" class="principal">Varrer</button>
+      <button id="btn-parar" type="button" class="perigo" hidden>Parar</button>
+    </div>
+    <div id="alvo" class="alvo"></div>
+  </header>
+
+  <section id="progresso" class="progresso" hidden>
+    <div class="barra-anda"><div class="barra-anda-miolo"></div></div>
+    <div class="contadores">
+      <span><b id="p-pastas">0</b> pastas</span>
+      <span><b id="p-arquivos">0</b> arquivos</span>
+      <span><b id="p-bytes">0 B</b> somados</span>
+      <span><b id="p-erros">0</b> sem permissão</span>
+    </div>
+    <div id="p-atual" class="atual"></div>
+  </section>
+
+  <section id="resumo" class="resumo" hidden></section>
+  <section id="erro-geral" class="erro-geral" hidden></section>
+
+  <nav id="abas" class="abas" hidden>
+    <button type="button" data-aba="pastas" class="ativa">Pastas</button>
+    <button type="button" data-aba="arquivos">Maiores arquivos</button>
+    <button type="button" data-aba="pesadas">Pastas mais pesadas</button>
+    <button type="button" data-aba="erros">Sem permissão</button>
+  </nav>
+
+  <main id="conteudo">
+    <p id="vazio" class="vazio">Escolha um disco ou uma pasta e clique em Varrer. Num disco inteiro a varredura leva alguns minutos.</p>
+
+    <section id="aba-pastas" class="aba" hidden>
+      <div class="trilha-linha">
+        <button id="btn-subir" type="button" title="Voltar pra pasta de cima">Subir um nível</button>
+        <div id="trilha" class="trilha"></div>
+      </div>
+      <div id="cabecalho-pasta" class="cabecalho-pasta"></div>
+      <div id="lista-pastas" class="lista"></div>
+    </section>
+
+    <section id="aba-arquivos" class="aba" hidden>
+      <p class="explica">Os maiores arquivos encontrados em qualquer pasta da varredura. "Mostrar" abre o Explorer com o arquivo selecionado. "Ver pasta" navega até ele aqui dentro.</p>
+      <div id="lista-arquivos" class="lista"></div>
+    </section>
+
+    <section id="aba-pesadas" class="aba" hidden>
+      <p class="explica">Pastas que mais pesam por conta dos arquivos soltos nelas, sem contar subpastas. É aqui que costuma aparecer o cache ou a pasta de download esquecida, mesmo quando está bem fundo na árvore.</p>
+      <div id="lista-pesadas" class="lista"></div>
+    </section>
+
+    <section id="aba-erros" class="aba" hidden>
+      <p class="explica">O Windows não deixa ler algumas pastas e arquivos do sistema (lixeira de outros usuários, restauração do sistema, pagefile.sys). O que está aqui não entrou na soma.</p>
+      <div id="lista-erros" class="lista"></div>
+    </section>
+  </main>
+
+  <footer class="rodape">Este programa só lê e mostra. Pra apagar alguma coisa, use "Abrir no Explorer" e apague por lá.</footer>
+
+  <script src="../src/formatar.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+{
+  "name": "cade-meu-espaco",
+  "version": "0.1.0",
+  "description": "Analisador de disco pra Windows: mostra quais pastas e arquivos estão comendo o espaço",
+  "main": "main.js",
+  "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "start": "electron .",
+    "cli": "node cli.js",
+    "test": "node --test",
+    "fumaca": "node tests/fumaca/ui.js",
+    "empacotar": "npx --yes electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^44.4.3"
+  },
+  "build": {
+    "appId": "br.com.a2reis.cademeuespaco",
+    "productName": "Cade meu espaco",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**",
+      "ui/**"
+    ],
+    "win": {
+      "target": "portable"
+    }
+  }
+}
