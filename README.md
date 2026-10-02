@@ -43,7 +43,18 @@ tem dois arquivos. Escolha um:
   instalados.
 - **`CadeMeuEspaco-Portatil-x.y.z.exe`**: roda sem instalar, é só abrir. Cada
   vez que abre, ele se descompacta numa pasta temporária, então demora um
-  pouco mais pra aparecer e precisa de espaço livre no C:.
+  pouco mais pra aparecer.
+
+**Espaço livre que cada um precisa no C:**
+
+- Portátil: uns 400 MB, porque ele se descompacta inteiro em `%TEMP%`.
+- Instalador: uns 500 MB (110 MB em `%TEMP%` durante a instalação e 370 MB
+  instalado).
+
+Se faltar espaço, **nenhum dos dois mostra erro**: o portátil para no meio da
+descompactação e a janela simplesmente não aparece. Com o disco lotado, use a
+versão de terminal, que não precisa instalar nada (ver
+[a próxima seção](#se-o-disco-está-lotado-comece-pelo-terminal)).
 
 `x.y.z` é o número da versão. Cada arquivo tem uns 106 MB, e o app instalado
 ocupa uns 370 MB (quase tudo é o Electron, que traz um Chromium inteiro
